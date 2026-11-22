@@ -1,0 +1,583 @@
+#include <LiquidCrystal.h>
+
+// LCD CONNECTION
+LiquidCrystal lcd(7, 6, 5, 4, 3, 2);
+
+// OUTPUT PINS
+const int greenLED = 10;
+const int redLED = 11;
+const int yellowLED = 9;
+const int buzzer = 8;
+
+// BUTTON PINS
+const int scanButton = A0;
+const int resetButton = A3;
+
+// DIP SWITCH PINS
+const int dipPins[] = {A1, A2, A4, A5};
+
+// STUDENT DATA
+const int TOTAL = 57;
+const int ELIGIBLE = 52;
+
+const int studentIDs[TOTAL] = {
+  60,61,62,63,64,65,66,67,68,69,
+  70,71,72,73,74,75,76,77,78,79,
+  80,81,82,83,84,85,86,87,88,89,
+  90,91,92,93,94,95,96,97,98,99,
+  100,101,102,103,104,105,106,107,
+  108,109,110,111,112,113,114,115,116
+};
+
+const char* studentNames[TOTAL] = {
+  "Love Gupta",
+  "Lucky Pritam",
+  "Maheshwar Chaurasia",
+  "Manav Jha",
+  "LEFT COLLEGE",
+  "Md Hanzala Ajaz",
+  "Mohammad Ammaar",
+  "Mohammed Tausif",
+  "Mohit Kumar",
+  "LEFT COLLEGE",
+  "Muktesh",
+  "Mukul Raj Mahalkay",
+  "Prachi Gautam",
+  "Pranjal Agrahari",
+  "Prashant Kumar",
+  "Prashant Kumar Gupta",
+  "Rahul Maurya",
+  "Ramesh Kumar",
+  "Ravi Ranjan Kumar",
+  "Rishabh Singh",
+  "Rishu Pandey",
+  "Ritwika Dutta",
+  "Sachin Sharma",
+  "Sahil Iqbal",
+  "Saksham",
+  "Sakshi",
+  "Samarth Dwivedi",
+  "Saniya Kumari",
+  "Sarthak Chandra Saxena",
+  "Satyanshu Karn",
+  "Shikha Soam",
+  "Shivam Kumar",
+  "Shivam Kumar",
+  "ADD NAME 93",
+  "Shivam Mahapatra",
+  "Shivam Raj",
+  "Shivanshu Vishwakarma",
+  "Shourya Tripathi",
+  "Shreya Singh",
+  "Shubham Pandey",
+  "Skand Sharma",
+  "Soham Banerjee",
+  "Somil Tiwari",
+  "Somya Jha",
+  "Soumay Mujral",
+  "LEFT COLLEGE",
+  "Sunny Kumar Patel",
+  "Suraj Kumar",
+  "Tanmay Sinha",
+  "Uttam Tiwari",
+  "Vaibhav Dwivedi",
+  "Vaibhavi Singh",
+  "LEFT COLLEGE",
+  "Vikrant Dedha",
+  "Yash",
+  "LEFT COLLEGE",
+  "Yuvraj Tiwari"
+};
+
+// LEFT COLLEGE STUDENTS
+const int leftCollegeIDs[] = {64, 69, 105, 112, 115};
+
+// ATTENDANCE ARRAY
+bool attendance[TOTAL] = {false};
+
+int pendingID = -1;
+
+bool lastScanState = HIGH;
+bool lastResetState = HIGH;
+
+
+// FIND STUDENT
+int findStudent(int id) {
+
+  for (int i = 0; i < TOTAL; i++) {
+
+    if (studentIDs[i] == id) {
+      return i;
+    }
+
+  }
+
+  return -1;
+}
+
+
+// CHECK LEFT COLLEGE
+bool isLeftCollege(int id) {
+
+  for (int i = 0; i < 5; i++) {
+
+    if (leftCollegeIDs[i] == id) {
+      return true;
+    }
+
+  }
+
+  return false;
+}
+
+
+// READ DIP SWITCH
+// Switch ON = HIGH
+// Switch OFF = LOW
+
+int readDIP() {
+
+  int code = 0;
+
+  for (int i = 0; i < 4; i++) {
+
+    code = code << 1;
+
+    if (digitalRead(dipPins[i]) == HIGH) {
+      code = code | 1;
+    }
+
+  }
+
+  return code;
+}
+
+
+// CALCULATE DIP CODE
+// Every 8 eligible students share one code.
+
+int getDIPCode(int id) {
+
+  int position = 0;
+
+  for (int i = 0; i < TOTAL; i++) {
+
+    if (isLeftCollege(studentIDs[i])) {
+      continue;
+    }
+
+    position++;
+
+    if (studentIDs[i] == id) {
+      return ((position - 1) / 8) + 1;
+    }
+
+  }
+
+  return -1;
+}
+
+
+// TURN OFF ALL LEDS
+void allLEDOff() {
+
+  digitalWrite(greenLED, LOW);
+  digitalWrite(redLED, LOW);
+  digitalWrite(yellowLED, LOW);
+
+}
+
+
+// GREEN ALERT - SUCCESS (1 SECOND)
+void greenAlert() {
+
+  allLEDOff();
+
+  digitalWrite(greenLED, HIGH);
+
+  tone(buzzer, 2500);
+  delay(1000);
+  noTone(buzzer);
+
+  digitalWrite(greenLED, LOW);
+
+}
+
+
+// RED ALERT - WRONG DIP (3 SECONDS)
+void redAlert() {
+
+  allLEDOff();
+
+  digitalWrite(redLED, HIGH);
+
+  tone(buzzer, 2500);
+  delay(3000);
+  noTone(buzzer);
+
+  digitalWrite(redLED, LOW);
+
+}
+
+
+// YELLOW ALERT - LEFT COLLEGE / ALREADY MARKED
+void yellowAlert(bool buzzerEnabled, int duration) {
+
+  allLEDOff();
+
+  digitalWrite(yellowLED, HIGH);
+
+  if (buzzerEnabled) {
+    tone(buzzer, 2500);
+    delay(duration);
+    noTone(buzzer);
+  }
+
+  else {
+    noTone(buzzer);
+  }
+
+  digitalWrite(yellowLED, LOW);
+
+}
+
+
+// INVALID ID - RED LED + BUZZER (3 SECONDS)
+void invalidAlert() {
+
+  allLEDOff();
+
+  digitalWrite(redLED, HIGH);
+
+  tone(buzzer, 2500);
+  delay(3000);
+  noTone(buzzer);
+
+  digitalWrite(redLED, LOW);
+
+}
+
+
+// DISPLAY ATTENDANCE
+void showAttendance() {
+
+  int present = 0;
+
+  for (int i = 0; i < TOTAL; i++) {
+
+    if (attendance[i] && !isLeftCollege(studentIDs[i])) {
+      present++;
+    }
+
+  }
+
+  float percentage = (present * 100.0) / ELIGIBLE;
+
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("PRESENT:");
+  lcd.print(present);
+  lcd.print("/");
+  lcd.print(ELIGIBLE);
+
+  lcd.setCursor(0, 1);
+  lcd.print("ATT:");
+  lcd.print(percentage, 2);
+  lcd.print("%");
+
+  Serial.print("Attendance: ");
+  Serial.print(present);
+  Serial.print("/");
+  Serial.print(ELIGIBLE);
+
+  Serial.print(" | Percentage: ");
+  Serial.print(percentage, 2);
+  Serial.println("%");
+
+}
+
+
+// DISPLAY STUDENT NAME
+void displayStudent(int index) {
+
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("STUDENT PRESENT");
+
+  lcd.setCursor(0, 1);
+  lcd.print(studentNames[index]);
+
+}
+
+
+// VERIFY STUDENT
+void verifyStudent(int id) {
+
+  int index = findStudent(id);
+
+  // INVALID ID
+  if (index == -1) {
+
+    Serial.println("INVALID STUDENT ID");
+
+    lcd.clear();
+    lcd.print("INVALID ID");
+
+    invalidAlert();
+
+    return;
+  }
+
+  Serial.print("Received ID: ");
+  Serial.println(id);
+
+
+  // LEFT COLLEGE
+  if (isLeftCollege(id)) {
+
+    Serial.println("LEFT COLLEGE");
+
+    lcd.clear();
+    lcd.print("LEFT COLLEGE");
+
+    yellowAlert(false, 0);
+
+    return;
+  }
+
+
+  // ALREADY MARKED
+  if (attendance[index]) {
+
+    Serial.println("ALREADY MARKED");
+
+    lcd.clear();
+    lcd.print("ALREADY MARKED");
+
+    yellowAlert(true, 2000);
+
+    return;
+  }
+
+
+  // DIP VERIFICATION
+  int expectedDIP = getDIPCode(id);
+  int enteredDIP = readDIP();
+
+  Serial.print("Expected DIP: ");
+
+  for (int bit = 3; bit >= 0; bit--) {
+    Serial.print((expectedDIP >> bit) & 1);
+  }
+
+  Serial.println();
+
+  Serial.print("Entered DIP: ");
+
+  for (int bit = 3; bit >= 0; bit--) {
+    Serial.print((enteredDIP >> bit) & 1);
+  }
+
+  Serial.println();
+
+
+  // CORRECT DIP
+  if (enteredDIP == expectedDIP) {
+
+    attendance[index] = true;
+
+    Serial.println("ACCESS GRANTED");
+    Serial.println("ATTENDANCE MARKED");
+
+    displayStudent(index);
+
+    greenAlert();
+
+    showAttendance();
+
+  }
+
+  // WRONG DIP
+  else {
+
+    Serial.println("WRONG DIP CODE");
+    Serial.println("ACCESS DENIED");
+
+    lcd.clear();
+    lcd.print("ACCESS DENIED");
+
+    redAlert();
+
+  }
+
+}
+
+
+// CONVERT SERIAL INPUT
+int convertID(String input) {
+
+  input.trim();
+
+  // 13 DIGIT COLLEGE ROLL NUMBER
+  if (input.length() == 13 &&
+      input.startsWith("250133031")) {
+
+    input = input.substring(9);
+
+  }
+
+  if (input.length() < 2 || input.length() > 4) {
+    return -1;
+  }
+
+  for (int i = 0; i < input.length(); i++) {
+
+    if (!isDigit(input[i])) {
+      return -1;
+    }
+
+  }
+
+  return input.toInt();
+
+}
+
+
+// RESET ATTENDANCE
+void resetAttendance() {
+
+  for (int i = 0; i < TOTAL; i++) {
+    attendance[i] = false;
+  }
+
+  pendingID = -1;
+
+  Serial.println("ATTENDANCE RESET");
+
+  lcd.clear();
+  lcd.print("ATTENDANCE");
+  lcd.setCursor(0, 1);
+  lcd.print("RESET SUCCESS");
+
+  delay(1500);
+
+  showAttendance();
+
+}
+
+
+// SETUP
+void setup() {
+
+  Serial.begin(9600);
+
+  lcd.begin(16, 2);
+
+  pinMode(greenLED, OUTPUT);
+  pinMode(redLED, OUTPUT);
+  pinMode(yellowLED, OUTPUT);
+  pinMode(buzzer, OUTPUT);
+
+  pinMode(scanButton, INPUT_PULLUP);
+  pinMode(resetButton, INPUT_PULLUP);
+
+  // DIP SWITCH INPUTS
+  // External 10k pull-down resistors required.
+
+  for (int i = 0; i < 4; i++) {
+    pinMode(dipPins[i], INPUT);
+  }
+
+  lcd.clear();
+  lcd.print("ATTENDANCE");
+  lcd.setCursor(0, 1);
+  lcd.print("SYSTEM READY");
+
+  Serial.println("ATTENDANCE SYSTEM READY");
+  Serial.println("Enter Student ID:");
+
+  delay(2000);
+
+  showAttendance();
+
+}
+
+
+// MAIN LOOP
+void loop() {
+
+  // SERIAL INPUT
+  if (Serial.available()) {
+
+    String input = Serial.readStringUntil('\n');
+
+    pendingID = convertID(input);
+
+    if (pendingID != -1) {
+
+      Serial.print("Received ID: ");
+      Serial.println(pendingID);
+
+      Serial.println("Set DIP code and press SCAN.");
+
+    }
+
+    else {
+
+      Serial.println("INVALID INPUT");
+
+    }
+
+  }
+
+
+  // SCAN BUTTON
+  bool scanState = digitalRead(scanButton);
+
+  if (lastScanState == HIGH && scanState == LOW) {
+
+    delay(50);
+
+    if (digitalRead(scanButton) == LOW) {
+
+      if (pendingID != -1) {
+
+        verifyStudent(pendingID);
+
+        pendingID = -1;
+
+      }
+
+      else {
+
+        Serial.println("ENTER STUDENT ID FIRST");
+
+      }
+
+    }
+
+  }
+
+  lastScanState = scanState;
+
+
+  // RESET BUTTON
+  bool resetState = digitalRead(resetButton);
+
+  if (lastResetState == HIGH && resetState == LOW) {
+
+    delay(50);
+
+    if (digitalRead(resetButton) == LOW) {
+
+      resetAttendance();
+
+    }
+
+  }
+
+  lastResetState = resetState;
+
+}
